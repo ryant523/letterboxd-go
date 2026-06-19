@@ -1,16 +1,16 @@
-module github.com/yourusername/letterboxd-go/scraper
+module github.com/ryant523/letterboxd-go/scraper
 
-go 1.26.1
+go 1.26.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.12.0
+	github.com/google/go-cmp v0.7.0
 	github.com/sardanioss/httpcloak v1.6.7
 )
 
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/miekg/dns v1.1.69 // indirect
 	github.com/sardanioss/http v1.2.0 // indirect

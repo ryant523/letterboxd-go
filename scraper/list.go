@@ -1,0 +1,194 @@
+package letterboxd
+
+import (
+	"context"
+	"fmt"
+	"iter"
+	"strings"
+	"time"
+
+	"github.com/PuerkitoBio/goquery"
+)
+
+// ListMovie represents a single movie entry extracted from a Letterboxd list overview page.
+// To get the full movie use [Client.GetMovie] with the Slug.
+type ListMovie struct {
+	Title string
+	Slug  string
+}
+
+// List represents a parsed Letterboxd movie list container along with its metadata
+// and internal pagination tracking capabilities.
+type List struct {
+	Url       string
+	UserNames []string
+	Title     string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+
+	client      *Client
+	firstMovies []*ListMovie
+	nextLink    string
+}
+
+// Movies returns a lazy-loaded iterator sequence for all entries in the list.
+// It automatically flushes the pre-fetched first page, then handles on-demand
+// HTTP calls for subsequent pages only as the loop advances.
+func (l *List) Movies(ctx context.Context) iter.Seq2[*ListMovie, error] {
+	return func(yield func(*ListMovie, error) bool) {
+		for _, m := range l.firstMovies {
+			if !yield(m, nil) {
+				return // User broke out of loop early
+			}
+		}
+		if l.nextLink == "" {
+			return
+		}
+
+		nextLink := l.nextLink
+		for {
+			url := "https://letterboxd.com" + nextLink
+			doc, err := l.client.getHtml(ctx, url)
+			if err != nil {
+				yield(&ListMovie{}, fmt.Errorf("failed fetching list: %s, %w", url, err))
+				return
+			}
+			var movies []*ListMovie
+			movies, nextLink = parseListItems(doc)
+			if len(movies) == 0 {
+				return
+			}
+			for _, m := range movies {
+				if !yield(m, nil) {
+					return
+				}
+			}
+			if nextLink == "" {
+				return
+			}
+		}
+	}
+
+}
+
+// GetList requests a Letterboxd list by its fully qualified URL, parses the metadata,
+// aggregates the initial chunk of movies, and initializes the tracking struct pointer.
+func (c *Client) GetList(ctx context.Context, url string) (*List, error) {
+	doc, err := c.getHtml(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch list base page: %w", err)
+	}
+
+	list, err := parseMovieList(doc)
+	if err != nil {
+		return nil, err
+	}
+	list.client = c
+	return list, nil
+}
+
+// parseMovieList extracts all high-level list metadata and the first batch
+// of film items from a loaded goquery document tree.
+func parseMovieList(doc *goquery.Document) (*List, error) {
+
+	headerSel := doc.Find("header.person-header")
+
+	items, nextLink := parseListItems(doc)
+
+	return &List{
+		Url:         getUrlFromList(doc), // Left as doc since it checks <head> meta tags
+		UserNames:   getUserNamesFromList(headerSel),
+		Title:       getTitleFromList(doc),
+		nextLink:    nextLink,
+		firstMovies: items,
+		CreatedAt:   getPublishedTime(doc),
+		UpdatedAt:   getUpdatedTime(doc),
+	}, nil
+}
+
+// parseListItems processes a single page's poster grid and extracts its items,
+// alongside searching for any valid forward pagination link.
+func parseListItems(doc *goquery.Document) ([]*ListMovie, string) {
+	posterGridSel := doc.Find("ul.poster-list")
+	paginationSel := doc.Find("div.pagination")
+	// Pre-allocate slice space guessing Letterboxd's standard grid size (typically 20-50 per page)
+	movies := make([]*ListMovie, 0, 50)
+
+	posterGridSel.Find("div.react-component").Each(func(i int, s *goquery.Selection) {
+		l := &ListMovie{}
+		if slug, exists := s.Attr("data-item-slug"); exists {
+			l.Slug = slug
+		}
+		if title, exists := s.Attr("data-item-name"); exists {
+			l.Title = title
+		}
+		movies = append(movies, l)
+	})
+	return movies, getNextLinkFromList(paginationSel)
+}
+
+// getUrlFromList extracts the canonical OpenGraph URL configuration.
+func getUrlFromList(doc *goquery.Document) string {
+	return doc.Find("meta[property='og:url']").AttrOr("content", "")
+}
+
+// getTitleFromList extracts the list's title from the OpenGraph header tags.
+func getTitleFromList(doc *goquery.Document) string {
+	return doc.Find("meta[property='og:title']").AttrOr("content", "")
+}
+
+// getUserNamesFromList safely extracts unique usernames from the list header.
+// Curated list pages can occasionally contain multiple names/avatars.
+func getUserNamesFromList(headerSel *goquery.Selection) []string {
+	var userNames []string
+	seen := make(map[string]bool)
+
+	// Just look for the anchors right inside the pre-located header selection
+	headerSel.Find("a.name, a.avatar").Each(func(i int, s *goquery.Selection) {
+		if href, exists := s.Attr("href"); exists {
+			userName := strings.Trim(href, "/")
+
+			if userName != "" && !seen[userName] {
+				seen[userName] = true
+				userNames = append(userNames, userName)
+			}
+		}
+	})
+
+	return userNames
+}
+
+// getNextLinkFromList checks the bottom pagination element to grab the forward link.
+func getNextLinkFromList(paginationSel *goquery.Selection) string {
+	return paginationSel.Find("a.next").AttrOr("href", "")
+}
+
+// getPublishedTime attempts to pull the list's native creation timestamp in ISO format.
+// Returns a zero-value time.Time{} if absent or unparseable.
+func getPublishedTime(doc *goquery.Document) time.Time {
+	publishedTimeStr, exists := doc.Find("span.published time").Attr("datetime")
+	if !exists {
+		return time.Time{}
+	}
+	parsedTime, err := time.Parse(time.RFC3339, publishedTimeStr)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsedTime
+}
+
+// getUpdatedTime attempts to pull the list's native modification timestamp in ISO format.
+// Returns a zero-value time.Time{} if the list has never been modified.
+func getUpdatedTime(doc *goquery.Document) time.Time {
+	updatedTimeStr, exists := doc.Find("span.updated time").Attr("datetime")
+	if !exists {
+		return time.Time{}
+	}
+
+	parsedTime, err := time.Parse(time.RFC3339, updatedTimeStr)
+	if err != nil {
+		return time.Time{}
+	}
+
+	return parsedTime
+}
