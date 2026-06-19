@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	letterboxd "github.com/yourusername/letterboxd-go/scraper"
+	letterboxd "github.com/ryant523/letterboxd-go/scraper"
 )
 
 func ExampleClient_GetMovie() {
@@ -18,4 +18,22 @@ func ExampleClient_GetMovie() {
 	}
 	fmt.Println(movie.Title)
 	fmt.Println(movie.ReleaseYear)
+}
+
+func ExampleClient_GetList() {
+	ctx := context.Background()
+	client := letterboxd.NewClient()
+	list, err := client.GetList(ctx, "https://letterboxd.com/official/list/letterboxds-top-500-films/")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(list.Title)
+
+	// To get movies, use the iterator from list.Movies
+	for movie, err := range list.Movies(ctx) {
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(movie.Title)
+	}
 }

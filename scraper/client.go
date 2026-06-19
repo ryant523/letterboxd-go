@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -21,28 +22,36 @@ type Client struct {
 	timeout    int
 	retry      int
 	httpClient *client.Client
+	logger     *slog.Logger
 }
 
-// Option defines a functional configuration option for configuring a [Client]
-type Option func(*Client)
+// ClientOption defines a functional configuration option for configuring a [Client]
+type ClientOption func(*Client)
 
 // WithTimeout sets the request timeout duration in seconds.
-func WithTimeout(timeout int) Option {
+func WithTimeout(timeout int) ClientOption {
 	return func(c *Client) {
 		c.timeout = timeout
 	}
 }
 
 // WithRetry sets the maximum number of network retries for failed HTTP requests.
-func WithRetry(retry int) Option {
+func WithRetry(retry int) ClientOption {
 	return func(c *Client) {
 		c.retry = retry
 	}
 }
 
+// WithLogger allows the user to pass an active structured logger
+func WithLogger(logger *slog.Logger) ClientOption {
+	return func(c *Client) {
+		c.logger = logger
+	}
+}
+
 // NewClient instatiates a new Letterboxd Client with modern browser cloaking.
 // By default, the client is configured with a 10-second timeout and 3 retries.
-func NewClient(opts ...Option) *Client {
+func NewClient(opts ...ClientOption) *Client {
 	c := &Client{
 		timeout: 10,
 		retry:   3,
@@ -59,8 +68,9 @@ func NewClient(opts ...Option) *Client {
 
 // getHtml executes a GET request against the target URL and processes the response stream
 // into a goquery Document.
-func (c Client) getHtml(ctx context.Context, u string) (*goquery.Document, error) {
-	resp, err := c.httpClient.Get(ctx, u, nil)
+func (c *Client) getHtml(ctx context.Context, url string) (*goquery.Document, error) {
+	c.logger.Info("fetching letterboxd page", "url", url)
+	resp, err := c.httpClient.Get(ctx, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +83,7 @@ func (c Client) getHtml(ctx context.Context, u string) (*goquery.Document, error
 			retryAfter = 30 * time.Second
 		}
 		return nil, &ErrRateLimited{
-			URL:        u,
+			URL:        url,
 			RetryAfter: retryAfter,
 		}
 	}
@@ -82,7 +92,7 @@ func (c Client) getHtml(ctx context.Context, u string) (*goquery.Document, error
 		// Cleanly drain the remaining body data before closing to reuse the TCP connection.
 		io.Copy(io.Discard, resp.Body)
 		return nil, &ErrUnexpectedStatus{
-			URL:        u,
+			URL:        url,
 			StatusCode: resp.StatusCode,
 		}
 	}

@@ -35,7 +35,7 @@ type Movie struct {
 
 // GetMovie requests a film's public page from Letterboxd by its unique slug identifier
 // and parses it into a [*Movie]
-func (c Client) GetMovie(ctx context.Context, slug string) (*Movie, error) {
+func (c *Client) GetMovie(ctx context.Context, slug string) (*Movie, error) {
 	url := "https://letterboxd.com/film/" + slug
 	html, err := c.getHtml(ctx, url)
 	if err != nil {
