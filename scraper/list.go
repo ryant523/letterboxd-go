@@ -50,10 +50,10 @@ func (l *List) Movies(ctx context.Context) iter.Seq2[*ListMovie, error] {
 
 		nextLink := l.nextLink
 		for {
-			url := "https://letterboxd.com" + nextLink
-			doc, err := l.client.getHtml(ctx, url)
+			path := nextLink
+			doc, err := l.client.getHtml(ctx, path)
 			if err != nil {
-				yield(&ListMovie{}, fmt.Errorf("failed fetching list: %s, %w", url, err))
+				yield(&ListMovie{}, fmt.Errorf("failed fetching list: %s, %w", path, err))
 				return
 			}
 			var movies []*ListMovie

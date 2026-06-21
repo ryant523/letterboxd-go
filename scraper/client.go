@@ -9,11 +9,14 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/sardanioss/httpcloak/client"
 )
+
+const baseURL = "https://letterboxd.com"
 
 // Client handles all HTTP communication and HTML scraping operations for Letterboxd.
 // This must be initialized using [NewClient] for proper configuration. This uses
@@ -49,6 +52,15 @@ func WithLogger(logger *slog.Logger) ClientOption {
 	}
 }
 
+// WithDebugLogger sets up a basic logger
+func WithDebugLogger(w io.Writer) ClientOption {
+	return func(c *Client) {
+		c.logger = slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		}))
+	}
+}
+
 // NewClient instatiates a new Letterboxd Client with modern browser cloaking.
 // By default, the client is configured with a 10-second timeout and 3 retries.
 func NewClient(opts ...ClientOption) *Client {
@@ -72,9 +84,17 @@ func NewClient(opts ...ClientOption) *Client {
 
 // getHtml executes a GET request against the target URL and processes the response stream
 // into a goquery Document.
-func (c *Client) getHtml(ctx context.Context, url string) (*goquery.Document, error) {
-	c.logger.Info("fetching letterboxd page", "url", url)
-	resp, err := c.httpClient.Get(ctx, url, nil)
+func (c *Client) getHtml(ctx context.Context, target string) (*goquery.Document, error) {
+	fullURL := target
+	if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+		// Ensure path starts with a slash
+		if !strings.HasPrefix(target, "/") {
+			target = "/" + target
+		}
+		fullURL = baseURL + target
+	}
+	c.logger.Info("fetching letterboxd page", "url", fullURL)
+	resp, err := c.httpClient.Get(ctx, fullURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +107,7 @@ func (c *Client) getHtml(ctx context.Context, url string) (*goquery.Document, er
 			retryAfter = 30 * time.Second
 		}
 		return nil, &ErrRateLimited{
-			URL:        url,
+			URL:        fullURL,
 			RetryAfter: retryAfter,
 		}
 	}
@@ -96,7 +116,7 @@ func (c *Client) getHtml(ctx context.Context, url string) (*goquery.Document, er
 		// Cleanly drain the remaining body data before closing to reuse the TCP connection.
 		io.Copy(io.Discard, resp.Body)
 		return nil, &ErrUnexpectedStatus{
-			URL:        url,
+			URL:        fullURL,
 			StatusCode: resp.StatusCode,
 		}
 	}

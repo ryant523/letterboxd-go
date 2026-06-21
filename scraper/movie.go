@@ -36,17 +36,16 @@ type Movie struct {
 // GetMovie requests a film's public page from Letterboxd by its unique slug identifier
 // and parses it into a [*Movie]
 func (c *Client) GetMovieBySlug(ctx context.Context, slug string) (*Movie, error) {
-	url := "https://letterboxd.com/film/" + slug
-	return c.getMovie(ctx, url)
+	path := "/film/" + slug
+	return c.getMovie(ctx, path)
 }
 
 func (c *Client) GetMovieByImdb(ctx context.Context, imdbID string) (*Movie, error) {
-	url := "https://letterboxd.com/imdb/" + imdbID
-	return c.getMovie(ctx, url)
+	path := "imdb/" + imdbID
+	return c.getMovie(ctx, path)
 }
 
 func (c *Client) getMovie(ctx context.Context, url string) (*Movie, error) {
-	fmt.Println(url)
 	html, err := c.getHtml(ctx, url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get movie HTML for url %s: %w", url, err)
