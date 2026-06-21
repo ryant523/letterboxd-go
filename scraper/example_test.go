@@ -12,6 +12,7 @@ func ExampleClient_GetMovieBySlug() {
 	client := letterboxd.NewClient(letterboxd.WithTimeout(10),
 		letterboxd.WithRetry(3),
 	)
+	defer client.Close()
 	movie, err := client.GetMovieBySlug(context.Background(), "la-la-land")
 	if err != nil {
 		log.Fatal(err)
@@ -23,6 +24,7 @@ func ExampleClient_GetMovieBySlug() {
 func ExampleClient_GetList() {
 	ctx := context.Background()
 	client := letterboxd.NewClient()
+	defer client.Close()
 	list, err := client.GetList(ctx, "https://letterboxd.com/official/list/letterboxds-top-500-films/")
 	if err != nil {
 		log.Fatal(err)
@@ -36,4 +38,9 @@ func ExampleClient_GetList() {
 		}
 		fmt.Println(movie.Title)
 	}
+
+	// can also get a slice of all movies in the list
+
+	movies, err := list.GetAllMovies(ctx)
+	fmt.Println(len(movies))
 }

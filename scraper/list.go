@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"net/url"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -75,10 +77,30 @@ func (l *List) Movies(ctx context.Context) iter.Seq2[*ListMovie, error] {
 
 }
 
+// Get All movies in the list
+func (l *List) GetAllMovies(ctx context.Context) ([]*ListMovie, error) {
+	movies := make([]*ListMovie, 0, l.Length)
+	for m, err := range l.Movies(ctx) {
+		if err != nil {
+			return nil, err
+		}
+		movies = append(movies, m)
+	}
+	return movies, nil
+}
+
 // GetList requests a Letterboxd list by its fully qualified URL, parses the metadata,
 // aggregates the initial chunk of movies, and initializes the tracking struct pointer.
-func (c *Client) GetList(ctx context.Context, url string) (*List, error) {
-	doc, err := c.getHtml(ctx, url)
+func (c *Client) GetList(ctx context.Context, u string, opts ...Option) (*List, error) {
+	baseUrl, _ := url.Parse(u)
+	options := &Options{}
+	for _, opt := range opts {
+		opt(options)
+	}
+	if optionsPath := options.Build(); optionsPath != "" {
+		baseUrl.Path = path.Join(baseUrl.Path, optionsPath)
+	}
+	doc, err := c.getHtml(ctx, baseUrl.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch list base page: %w", err)
 	}

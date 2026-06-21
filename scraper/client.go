@@ -22,10 +22,10 @@ const baseURL = "https://letterboxd.com"
 // This must be initialized using [NewClient] for proper configuration. This uses
 // a http client with browser TLS/HTTP fingerprint spoofing.
 type Client struct {
-	timeout    int
-	retry      int
-	httpClient *client.Client
-	logger     *slog.Logger
+	timeout int
+	retry   int
+	session *client.Client
+	logger  *slog.Logger
 }
 
 // ClientOption defines a functional configuration option for configuring a [Client]
@@ -71,10 +71,12 @@ func NewClient(opts ...ClientOption) *Client {
 	for _, opt := range opts {
 		opt(c)
 	}
-	c.httpClient = client.NewClient("chrome-latest",
+
+	c.session = client.NewSession("chrome-latest",
 		client.WithTimeout(time.Duration(c.timeout)*time.Second),
 		client.WithRetry(c.retry),
 	)
+
 	if c.logger == nil {
 		noOpHandler := slog.NewTextHandler(io.Discard, nil)
 		c.logger = slog.New(noOpHandler)
@@ -82,8 +84,16 @@ func NewClient(opts ...ClientOption) *Client {
 	return c
 }
 
+// Close will close the internal http session
+func (c *Client) Close() error {
+	if c.session != nil {
+		c.session.Close()
+	}
+	return nil
+}
+
 // getHtml executes a GET request against the target URL and processes the response stream
-// into a goquery Document.
+// into a goquery Document. This will retry up to 3 times when receiving a 403 error.
 func (c *Client) getHtml(ctx context.Context, target string) (*goquery.Document, error) {
 	fullURL := target
 	if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
@@ -93,35 +103,62 @@ func (c *Client) getHtml(ctx context.Context, target string) (*goquery.Document,
 		}
 		fullURL = baseURL + target
 	}
+	if !strings.HasSuffix(fullURL, "/") {
+		fullURL += "/"
+	}
 	c.logger.Info("fetching letterboxd page", "url", fullURL)
-	resp, err := c.httpClient.Get(ctx, fullURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusTooManyRequests {
-		io.Copy(io.Discard, resp.Body)
-		retryAfter := parseRetryAfter(resp.Headers)
-		if retryAfter == 0 {
-			retryAfter = 30 * time.Second
-		}
-		return nil, &ErrRateLimited{
-			URL:        fullURL,
-			RetryAfter: retryAfter,
-		}
-	}
+	var lastErr error
 
-	if resp.StatusCode != http.StatusOK {
-		// Cleanly drain the remaining body data before closing to reuse the TCP connection.
-		io.Copy(io.Discard, resp.Body)
-		return nil, &ErrUnexpectedStatus{
-			URL:        fullURL,
-			StatusCode: resp.StatusCode,
+	for i := 0; i < c.retry+1; i++ {
+		resp, err := c.session.Get(ctx, fullURL, nil)
+		if err != nil {
+			return nil, err
 		}
-	}
 
-	return getDocument(resp.Body)
+		if resp.StatusCode == http.StatusTooManyRequests {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			retryAfter := parseRetryAfter(resp.Headers)
+			if retryAfter == 0 {
+				retryAfter = 30 * time.Second
+			}
+			c.logger.Warn(fmt.Sprintf("Attempt %d FAILED - 403 error", i+1))
+			return nil, &ErrRateLimited{
+				URL:        fullURL,
+				RetryAfter: retryAfter,
+			}
+		}
+
+		// retry 403 errors
+		if resp.StatusCode == 403 {
+			values := resp.Headers["CF-Ray"]
+			var cfRay string
+			if len(values) > 0 {
+				cfRay = values[0]
+			}
+			lastErr = &ErrWAFBlock{URL: fullURL, RayID: cfRay}
+			// TODO: Maybe sleep randomally
+
+			resp.Body.Close()
+			continue
+		}
+
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			// Cleanly drain the remaining body data before closing to reuse the TCP connection.
+			io.Copy(io.Discard, resp.Body)
+			return nil, &ErrUnexpectedStatus{
+				URL:        fullURL,
+				StatusCode: resp.StatusCode,
+			}
+		}
+
+		return getDocument(resp.Body)
+
+	}
+	return nil, fmt.Errorf("failed to fetch page after %d attempts. Last err: %v", c.retry+1, lastErr)
 }
 
 // getDocument builds a a goquery HTML document directly from an io.Reader stream.

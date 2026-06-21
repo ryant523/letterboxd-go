@@ -28,3 +28,17 @@ type ErrUnexpectedStatus struct {
 func (e *ErrUnexpectedStatus) Error() string {
 	return fmt.Sprintf("letterboxd: unexpected status code %d for URL %s", e.StatusCode, e.URL)
 }
+
+// ErrWAFBlock is returned when Cloudflare intercepts the request
+// with a 403 Managed Challenge or Block.
+type ErrWAFBlock struct {
+	URL   string
+	RayID string // Optional: Useful for tracking or debugging
+}
+
+func (e *ErrWAFBlock) Error() string {
+	if e.RayID != "" {
+		return fmt.Sprintf("letterboxd: blocked by Cloudflare WAF (HTTP 403) for URL %s (CF-Ray: %s)", e.URL, e.RayID)
+	}
+	return fmt.Sprintf("letterboxd: blocked by Cloudflare WAF (HTTP 403) for URL %s", e.URL)
+}
