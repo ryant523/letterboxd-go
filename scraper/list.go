@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,8 +15,9 @@ import (
 // ListMovie represents a single movie entry extracted from a Letterboxd list overview page.
 // To get the full movie use [Client.GetMovie] with the Slug.
 type ListMovie struct {
-	Title string
-	Slug  string
+	Title       string
+	ReleaseYear int
+	Slug        string
 }
 
 // List represents a parsed Letterboxd movie list container along with its metadata
@@ -119,8 +122,10 @@ func parseListItems(doc *goquery.Document) ([]*ListMovie, string) {
 		if slug, exists := s.Attr("data-item-slug"); exists {
 			l.Slug = slug
 		}
-		if title, exists := s.Attr("data-item-name"); exists {
+		if name, exists := s.Attr("data-item-name"); exists {
+			title, year := extractMovieInfo(name)
 			l.Title = title
+			l.ReleaseYear = year
 		}
 		movies = append(movies, l)
 	})
@@ -191,4 +196,28 @@ func getUpdatedTime(doc *goquery.Document) time.Time {
 	}
 
 	return parsedTime
+}
+
+// extractMovieInfo will extract the movie title and year from a string like "Birdman or (The Unexpected Virtue of Ignorance) (2014)"
+func extractMovieInfo(input string) (string, int) {
+	// Compile the regular expression
+	re := regexp.MustCompile(`^(.+)\s+\((\d{4})\)$`)
+
+	// Find the submatches
+	matches := re.FindStringSubmatch(input)
+
+	// If we don't get exactly 3 elements (the full match + 2 caputure groups),
+	// the string didn't match the expected format.
+	if len(matches) != 3 {
+		return "", 0
+	}
+
+	// Clean up any trailing/leading whitespace just in case
+	title := strings.TrimSpace(matches[1])
+	year, err := strconv.Atoi(matches[2])
+	if err != nil {
+		year = 0
+	}
+
+	return title, year
 }

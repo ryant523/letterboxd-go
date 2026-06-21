@@ -77,8 +77,11 @@ func validateTop500(t *testing.T, actual *List) {
 		if movie.Slug != "harakiri" {
 			t.Errorf("List firstMovies[0] expected Slug 'harakiri', got '%s'", movie.Slug)
 		}
-		if movie.Title != "Harakiri (1962)" {
-			t.Errorf("List firstMovies[0] expected Title 'Harakiri (1962)', got '%s'", movie.Title)
+		if movie.Title != "Harakiri" {
+			t.Errorf("List firstMovies[0] expected Title 'Harakiri', got '%s'", movie.Title)
+		}
+		if movie.ReleaseYear != 1962 {
+			t.Errorf("List firstMovies[0] expected ReleaseYear '1962', got '%d'", movie.ReleaseYear)
 		}
 	}
 }
