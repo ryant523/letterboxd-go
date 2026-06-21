@@ -56,6 +56,7 @@ func validateTop500(t *testing.T, actual *List) {
 	updatedAt, _ := time.Parse(layout, "2026-06-09 09:33:55.374Z")
 	expected := &List{
 		Title:     "Letterboxd's Top 500 Films",
+		Length:    500,
 		UserNames: []string{"official", "dave"},
 		Url:       "https://letterboxd.com/official/list/letterboxds-top-500-films/",
 		CreatedAt: createdAt,

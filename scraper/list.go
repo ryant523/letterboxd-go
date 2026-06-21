@@ -26,6 +26,7 @@ type List struct {
 	Url       string
 	UserNames []string
 	Title     string
+	Length    int
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
@@ -102,6 +103,7 @@ func parseMovieList(doc *goquery.Document) (*List, error) {
 		Url:         getUrlFromList(doc), // Left as doc since it checks <head> meta tags
 		UserNames:   getUserNamesFromList(headerSel),
 		Title:       getTitleFromList(doc),
+		Length:      getNumberOfMoviesFromList(doc),
 		nextLink:    nextLink,
 		firstMovies: items,
 		CreatedAt:   getPublishedTime(doc),
@@ -140,6 +142,26 @@ func getUrlFromList(doc *goquery.Document) string {
 // getTitleFromList extracts the list's title from the OpenGraph header tags.
 func getTitleFromList(doc *goquery.Document) string {
 	return doc.Find("meta[property='og:title']").AttrOr("content", "")
+}
+
+// getNumberOfMoviesFromList extracts the number of movies
+func getNumberOfMoviesFromList(doc *goquery.Document) int {
+	desc := doc.Find("meta[name='description']").AttrOr("content", "")
+	if desc == "" {
+		return 0
+	}
+
+	re := regexp.MustCompile(`A list of (\d+) films compiled`)
+	matches := re.FindStringSubmatch(desc)
+	if len(matches) < 2 {
+		return 0
+	}
+	countStr := matches[1]
+	filmCount, err := strconv.Atoi(countStr)
+	if err != nil {
+		return 0
+	}
+	return filmCount
 }
 
 // getUserNamesFromList safely extracts unique usernames from the list header.
