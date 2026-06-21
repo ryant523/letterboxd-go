@@ -63,6 +63,10 @@ func NewClient(opts ...ClientOption) *Client {
 		client.WithTimeout(time.Duration(c.timeout)*time.Second),
 		client.WithRetry(c.retry),
 	)
+	if c.logger == nil {
+		noOpHandler := slog.NewTextHandler(io.Discard, nil)
+		c.logger = slog.New(noOpHandler)
+	}
 	return c
 }
 

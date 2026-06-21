@@ -8,11 +8,11 @@ import (
 	letterboxd "github.com/ryant523/letterboxd-go/scraper"
 )
 
-func ExampleClient_GetMovie() {
+func ExampleClient_GetMovieBySlug() {
 	client := letterboxd.NewClient(letterboxd.WithTimeout(10),
 		letterboxd.WithRetry(3),
 	)
-	movie, err := client.GetMovie(context.Background(), "la-la-land")
+	movie, err := client.GetMovieBySlug(context.Background(), "la-la-land")
 	if err != nil {
 		log.Fatal(err)
 	}

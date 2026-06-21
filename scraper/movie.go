@@ -35,15 +35,25 @@ type Movie struct {
 
 // GetMovie requests a film's public page from Letterboxd by its unique slug identifier
 // and parses it into a [*Movie]
-func (c *Client) GetMovie(ctx context.Context, slug string) (*Movie, error) {
+func (c *Client) GetMovieBySlug(ctx context.Context, slug string) (*Movie, error) {
 	url := "https://letterboxd.com/film/" + slug
+	return c.getMovie(ctx, url)
+}
+
+func (c *Client) GetMovieByImdb(ctx context.Context, imdbID string) (*Movie, error) {
+	url := "https://letterboxd.com/imdb/" + imdbID
+	return c.getMovie(ctx, url)
+}
+
+func (c *Client) getMovie(ctx context.Context, url string) (*Movie, error) {
+	fmt.Println(url)
 	html, err := c.getHtml(ctx, url)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get movie HTML for slug %s: %w", slug, err)
+		return nil, fmt.Errorf("failed to get movie HTML for url %s: %w", url, err)
 	}
 	movie, err := parseMovie(html)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse movie HTML for slug %s: %w", slug, err)
+		return nil, fmt.Errorf("failed to parse movie HTML for url %s: %w", url, err)
 	}
 	return movie, nil
 }
