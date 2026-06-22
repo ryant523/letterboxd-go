@@ -20,6 +20,7 @@ type ListMovie struct {
 	Title       string
 	ReleaseYear int
 	Slug        string
+	Rank        int
 }
 
 // List represents a parsed Letterboxd movie list container along with its metadata
@@ -141,18 +142,22 @@ func parseListItems(doc *goquery.Document) ([]*ListMovie, string) {
 	// Pre-allocate slice space guessing Letterboxd's standard grid size (typically 20-50 per page)
 	movies := make([]*ListMovie, 0, 50)
 
-	posterGridSel.Find("div.react-component").Each(func(i int, s *goquery.Selection) {
+	posterGridSel.Find("li.posteritem").Each(func(i int, s *goquery.Selection) {
 		l := &ListMovie{}
-		if slug, exists := s.Attr("data-item-slug"); exists {
+		movieDiv := s.Find("div.react-component")
+		if slug, exists := movieDiv.Attr("data-item-slug"); exists {
 			l.Slug = slug
 		}
-		if name, exists := s.Attr("data-item-name"); exists {
+		if name, exists := movieDiv.Attr("data-item-name"); exists {
 			title, year := extractMovieInfo(name)
 			l.Title = title
 			l.ReleaseYear = year
 		}
+		l.Rank = convertTextToInt(s.Find("p.list-number").Text())
 		movies = append(movies, l)
+
 	})
+
 	return movies, getNextLinkFromList(paginationSel)
 }
 
