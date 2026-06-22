@@ -8,6 +8,8 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+// User represents a letterboxd user to get basic stats along with the Top Four.
+// Use Diary to get a user's diary.
 type User struct {
 	UserName       string
 	DisplayName    string
@@ -21,6 +23,7 @@ type User struct {
 	Badge          string // Pro, Patron
 }
 
+// GetUser will retrieve and scrape the user profile page.
 func (c *Client) GetUser(ctx context.Context, username string) (*User, error) {
 	html, err := c.getHtml(ctx, username)
 	if err != nil {
@@ -98,6 +101,7 @@ func getBadge(headerSel *goquery.Selection) string {
 	return headerSel.Find(".badge").Text()
 }
 
+// convertTextToInt will cleanup whitespace around text and convert it to int
 func convertTextToInt(text string) int {
 	cleanText := strings.TrimSpace(text)
 	if strings.Contains(cleanText, ",") {
