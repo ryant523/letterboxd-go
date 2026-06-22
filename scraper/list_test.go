@@ -84,5 +84,8 @@ func validateTop500(t *testing.T, actual *List) {
 		if movie.ReleaseYear != 1962 {
 			t.Errorf("List firstMovies[0] expected ReleaseYear '1962', got '%d'", movie.ReleaseYear)
 		}
+		if movie.Rank != 1 {
+			t.Errorf("List firtMovies[0] expected Rank '1', got '%d'", movie.Rank)
+		}
 	}
 }
