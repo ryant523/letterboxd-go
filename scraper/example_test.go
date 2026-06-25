@@ -44,3 +44,50 @@ func ExampleClient_GetList() {
 	movies, err := list.GetAllMovies(ctx)
 	fmt.Println(len(movies))
 }
+
+func ExampleClient_GetDiary() {
+	ctx := context.Background()
+	client := letterboxd.NewClient()
+	defer client.Close()
+
+	diary, err := client.GetDiary(
+		ctx,
+		"userName",
+		letterboxd.WithWatchedYear("2026"),
+		letterboxd.WithDirector("akira-kurosawa"),
+		letterboxd.WithRating(letterboxd.RatingFourHalf),
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	for entry, err := range diary.Entries(ctx) {
+		if err != nil {
+			log.Panic(err)
+		}
+		fmt.Printf("%s - %s (%d)\n", entry.DateWatched.Format("20060102"), entry.Title, entry.ReleaseYear)
+
+	}
+}
+
+func ExampleClient_GetUser() {
+	ctx := context.Background()
+	client := letterboxd.NewClient()
+	defer client.Close()
+
+	user, err := client.GetUser(ctx, "userName")
+	if err != nil {
+		log.Panic(err)
+	}
+	fmt.Println(user.DisplayName)
+	movies := make([]*letterboxd.Movie, 0, 4)
+	for _, top4 := range user.TopFour {
+		m, err := client.GetMovieBySlug(ctx, top4.Slug)
+		if err != nil {
+			log.Panic(err)
+		}
+		movies = append(movies, m)
+	}
+
+	fmt.Printf("%+v\n", movies)
+}
