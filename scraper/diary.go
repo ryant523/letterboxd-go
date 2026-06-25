@@ -93,7 +93,7 @@ func (c *Client) GetDiary(ctx context.Context, userName string, opts ...Option) 
 	for _, opt := range opts {
 		opt(options)
 	}
-	if optionsPath := options.Build(); optionsPath != "" {
+	if optionsPath := options.build(); optionsPath != "" {
 		u.Path = path.Join(u.Path, optionsPath)
 	}
 	doc, err := c.getHtml(ctx, u.String())

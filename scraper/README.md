@@ -8,13 +8,12 @@ A Letterboxd web scraper written in Go.
 
 # Usage
 
-To get started you must create a new Client
+To get started you must create a new Client. This uses [github.com/sardanioss/httpcloak/client]("github.com/sardanioss/httpcloak/client") for fingerprinting to prevent being blocked by Cloudflare. This uses a session that should be closed.
 
 ```go
 client := letterboxd.NewClient()
+defer client.Close()
 ```
-
-This uses [github.com/sardanioss/httpcloak/client]("github.com/sardanioss/httpcloak/client") for fingerprinting to prevent being blocked by Cloudflare.
 
 ## Movies
 
@@ -39,5 +38,24 @@ The Movies() returns an iterator to get the movies of the list. The movie contai
 for _, m := range list.Movies(ctx) {
     fmt.Printf("%s (%d) [%s]\n", m.Title, m.ReleaseYear, m.Slug)
 }
+```
+
+The lists can be filtered and sorted by using the available Option optional functions.
+
+```go
+WithGenre(genre string)
+WithDecade(decade string) // "19990s"
+WithYear(year string)
+WithDirector(director string) // director slug
+WithActor(actor string) // actor slug
+
+WithSortBy(sort SortBy)
+
+list, err := client.GetList(
+    ctx,
+    url,
+    letterboxd.WithDirector("akira-kurosawa"),
+    letterboxd.WithSortBy(letterboxd.SortPopularity),
+)
 
 ```

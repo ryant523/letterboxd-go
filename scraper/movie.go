@@ -33,18 +33,20 @@ type Movie struct {
 	Genres           []string
 }
 
-// GetMovie requests a film's public page from Letterboxd by its unique slug identifier
+// GetMovieBySlug requests a film's public page from Letterboxd by its unique slug identifier
 // and parses it into a [*Movie]
 func (c *Client) GetMovieBySlug(ctx context.Context, slug string) (*Movie, error) {
 	path := "/film/" + slug
 	return c.getMovie(ctx, path)
 }
 
+// GetMovieByImdb requests a film's public page from Letterboxd by its Imdb ID
 func (c *Client) GetMovieByImdb(ctx context.Context, imdbID string) (*Movie, error) {
 	path := "imdb/" + imdbID
 	return c.getMovie(ctx, path)
 }
 
+// getMovie will make the request to the url and parse the Movie
 func (c *Client) getMovie(ctx context.Context, url string) (*Movie, error) {
 	html, err := c.getHtml(ctx, url)
 	if err != nil {
@@ -55,6 +57,20 @@ func (c *Client) getMovie(ctx context.Context, url string) (*Movie, error) {
 		return nil, fmt.Errorf("failed to parse movie HTML for url %s: %w", url, err)
 	}
 	return movie, nil
+}
+
+type movieParser struct {
+	doc        *goquery.Document
+	posterSel  *goquery.Selection
+	detailsSel *goquery.Selection
+}
+
+func newMovieParser(doc *goquery.Document) *movieParser {
+	return &movieParser{
+		doc:        doc,
+		posterSel:  doc.Find("#poster-modal .react-component"),
+		detailsSel: doc.Find("#tab-panel-details"),
+	}
 }
 
 // crewData acts as an internal structural translation matrix to isolate separate
@@ -70,41 +86,38 @@ type crewData struct {
 // parseMovie maps a raw HTML goquery DOM tree directly into a strongly typed [*Movie] struct.
 // It relies on predefined internal element configurations to cleanly extract individual data fields.
 func parseMovie(doc *goquery.Document) (*Movie, error) {
-	title := getMovieTitle(doc)
+	p := newMovieParser(doc)
+	title := p.title()
 	if title == "" {
 		return nil, fmt.Errorf("could not find movie title; page layout may have changed or page is invalid")
 	}
 
-	// Find major containers once to avoid redundant, expensive global selector scans
-	posterSel := doc.Find("#poster-modal .react-component")
-	detailsSel := doc.Find("#tab-panel-details")
-	crewSel := doc.Find("#tab-panel-crew")
-	castSel := doc.Find("#tab-panel-cast")
-
-	crew := extractCrew(crewSel)
+	crew := p.extractCrew()
 
 	return &Movie{
 		Title:            title,
-		Slug:             getMovieSlug(posterSel),
-		ReleaseYear:      getMovieReleaseYear(doc),
-		ImdbID:           getMovieImdbID(doc),
-		TmdbID:           getMovieTmdbID(doc),
-		Runtime:          getMovieRuntime(doc),
-		Language:         getMovieLanguage(detailsSel),
-		Genres:           getMovieGenres(doc),
+		Slug:             p.slug(),
+		ReleaseYear:      p.releaseYear(),
+		ImdbID:           p.imdbID(),
+		TmdbID:           p.tmdbID(),
+		Runtime:          p.runtime(),
+		Language:         p.language(),
+		Genres:           p.genres(),
 		Directors:        crew.Directors,
 		Composers:        crew.Composers,
 		Writers:          crew.Writers,
 		OriginalWriters:  crew.OriginalWriters,
 		Cinematographers: crew.Cinematographers,
-		Actors:           getMovieActors(castSel),
+		Actors:           p.actors(),
 	}, nil
 }
 
 // extractCrew iterates through the film's crew panel structure, mapping categorized professional
 // headings ("Director", "Writer", etc.) directly to arrays of [Person] structs.
-func extractCrew(crewSel *goquery.Selection) crewData {
+func (p *movieParser) extractCrew() crewData {
 	var crew crewData
+
+	crewSel := p.doc.Find("#tab-panel-crew")
 
 	crewSel.Find("h3").Each(func(i int, s *goquery.Selection) {
 		roleText := strings.TrimSpace(s.Find(".crewrole.-full").Text())
@@ -139,18 +152,18 @@ func extractCrew(crewSel *goquery.Selection) crewData {
 	return crew
 }
 
-// getMovieTitle extracts the text element containing the primary movie headline.
-func getMovieTitle(doc *goquery.Document) string {
-	return strings.TrimSpace(doc.Find("h1.headline-1.primaryname").Text())
+// title extracts the text element containing the primary movie headline.
+func (p *movieParser) title() string {
+	return strings.TrimSpace(p.doc.Find("h1.headline-1.primaryname").Text())
 }
 
-// getMovieSlug reads tracking elements inside the poster DOM element to determine the canonical film path.
-func getMovieSlug(posterSel *goquery.Selection) string {
-	if slug, exists := posterSel.Attr("data-item-slug"); exists {
+// movieSlug reads tracking elements inside the poster DOM element to determine the canonical film path.
+func (p *movieParser) slug() string {
+	if slug, exists := p.posterSel.Attr("data-item-slug"); exists {
 		return strings.TrimSpace(slug)
 	}
 
-	if link, exists := posterSel.Attr("data-item-link"); exists {
+	if link, exists := p.posterSel.Attr("data-item-link"); exists {
 		parts := strings.Split(strings.Trim(link, "/"), "/")
 		if len(parts) > 1 {
 			return parts[1]
@@ -159,11 +172,11 @@ func getMovieSlug(posterSel *goquery.Selection) string {
 	return ""
 }
 
-// getMovieReleaseYear pulls the primary link value containing the designated production calendar year.
-func getMovieReleaseYear(doc *goquery.Document) int {
-	yearStr := strings.TrimSpace(doc.Find(".releaseyear a").First().Text())
+// releaseYear pulls the primary link value containing the designated production calendar year.
+func (p *movieParser) releaseYear() int {
+	yearStr := strings.TrimSpace(p.doc.Find(".releaseyear a").First().Text())
 	if yearStr == "" {
-		yearStr = strings.TrimSpace(doc.Find("span.releasedate").Text())
+		yearStr = strings.TrimSpace(p.doc.Find("span.releasedate").Text())
 	}
 
 	if year, err := strconv.Atoi(yearStr); err == nil {
@@ -172,9 +185,9 @@ func getMovieReleaseYear(doc *goquery.Document) int {
 	return 0
 }
 
-// getMovieImdbID isolates the standardized tracking ID extracted directly from the outgoing IMDb link.
-func getMovieImdbID(doc *goquery.Document) string {
-	if imdbHref, exists := doc.Find(`a[data-track-action="IMDb"]`).Attr("href"); exists {
+// imdbID isolates the standardized tracking ID extracted directly from the outgoing IMDb link.
+func (p *movieParser) imdbID() string {
+	if imdbHref, exists := p.doc.Find(`a[data-track-action="IMDb"]`).Attr("href"); exists {
 		if idx := strings.Index(imdbHref, "?"); idx != -1 {
 			imdbHref = imdbHref[:idx]
 		}
@@ -186,9 +199,9 @@ func getMovieImdbID(doc *goquery.Document) string {
 	return ""
 }
 
-// getMovieTmdbID parses the numerical tracking identifier retrieved from outbound TMDB redirect references.
-func getMovieTmdbID(doc *goquery.Document) int {
-	if tmdbHref, exists := doc.Find(`a[data-track-action="TMDB"]`).Attr("href"); exists {
+// tmdbID parses the numerical tracking identifier retrieved from outbound TMDB redirect references.
+func (p *movieParser) tmdbID() int {
+	if tmdbHref, exists := p.doc.Find(`a[data-track-action="TMDB"]`).Attr("href"); exists {
 		parts := strings.Split(tmdbHref, "/")
 		if len(parts) > 4 {
 			if tid, err := strconv.Atoi(parts[4]); err == nil {
@@ -199,9 +212,9 @@ func getMovieTmdbID(doc *goquery.Document) int {
 	return 0
 }
 
-// getMovieRuntime parses textual runtime elements, removing non-standard character spacing representations.
-func getMovieRuntime(doc *goquery.Document) int {
-	footerText := doc.Find("p.text-link.text-footer").Text()
+// runtime parses the movie runtime in minutes
+func (p *movieParser) runtime() int {
+	footerText := p.doc.Find("p.text-link.text-footer").Text()
 
 	// Normalize the string. HTML spaces (&nbsp;) often convert into special
 	// unicode spaces (\u00a0). Replacing them with standard spaces makes parsing safer.
@@ -224,14 +237,14 @@ func getMovieRuntime(doc *goquery.Document) int {
 	return runtime
 }
 
-// getMovieLanguage crawls through detail list blocks looking explicitly for the primary dialogue classification field
-func getMovieLanguage(detailsSel *goquery.Selection) string {
-	primaryAnchor := detailsSel.Find("h3:contains('Primary Language')").Next().Find("a.text-slug")
+// language crawls through detail list blocks looking explicitly for the primary dialogue classification field
+func (p *movieParser) language() string {
+	primaryAnchor := p.detailsSel.Find("h3:contains('Primary Language')").Next().Find("a.text-slug")
 	if primaryAnchor.Length() > 0 {
 		return strings.TrimSpace(primaryAnchor.First().Text())
 	}
 
-	fallbackAnchor := detailsSel.Find("h3:contains('Language')").First().Next().Find("a.text-slug")
+	fallbackAnchor := p.detailsSel.Find("h3:contains('Language')").First().Next().Find("a.text-slug")
 	if fallbackAnchor.Length() > 0 {
 		return strings.TrimSpace(fallbackAnchor.First().Text())
 	}
@@ -239,11 +252,11 @@ func getMovieLanguage(detailsSel *goquery.Selection) string {
 	return ""
 }
 
-// getMovieGenres scans categorical metadata anchor elements tagged within the genre panel element.
-func getMovieGenres(doc *goquery.Document) []string {
+// genres scans categorical metadata anchor elements tagged within the genre panel element.
+func (p *movieParser) genres() []string {
 	var genres []string
 	// Find anchor tags inside the container whose href contains "/genre/"
-	doc.Find("#tab-panel-genres a[href*='/genre/']").Each(func(i int, anchor *goquery.Selection) {
+	p.doc.Find("#tab-panel-genres a[href*='/genre/']").Each(func(i int, anchor *goquery.Selection) {
 		name := strings.TrimSpace(anchor.Text())
 		if name != "" {
 			genres = append(genres, name)
@@ -253,9 +266,11 @@ func getMovieGenres(doc *goquery.Document) []string {
 	return genres
 }
 
-// getMovieActors isolates individual cast name components mapped within the corresponding billing layout container.
-func getMovieActors(castSel *goquery.Selection) []Person {
+// actors isolates individual cast name components mapped within the corresponding billing layout container.
+func (p *movieParser) actors() []Person {
 	var actors []Person
+
+	castSel := p.doc.Find("#tab-panel-cast")
 
 	castSel.Find("a[href*='/actor/']").Each(func(i int, anchor *goquery.Selection) {
 		rawName := anchor.Text()

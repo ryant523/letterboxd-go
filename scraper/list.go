@@ -98,7 +98,7 @@ func (c *Client) GetList(ctx context.Context, u string, opts ...Option) (*List, 
 	for _, opt := range opts {
 		opt(options)
 	}
-	if optionsPath := options.Build(); optionsPath != "" {
+	if optionsPath := options.build(); optionsPath != "" {
 		baseUrl.Path = path.Join(baseUrl.Path, optionsPath)
 	}
 	doc, err := c.getHtml(ctx, baseUrl.String())

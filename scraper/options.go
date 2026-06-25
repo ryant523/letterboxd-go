@@ -2,6 +2,7 @@ package letterboxd
 
 import "strings"
 
+// Rating are the letterboxd ratings that can be used to filter diary results
 type Rating string
 
 const (
@@ -30,7 +31,6 @@ const (
 	SortAddedEarliest   SortBy = "by/added-earliest"
 	SortReleaseNewest   SortBy = "by/release"
 	SortReleaseEarliest SortBy = "by/release-earliest"
-	SortDiaryCount      SortBy = "by/diary-count"
 	SortFilmName        SortBy = "by/name"
 	SortPopularity      SortBy = "by/popular"
 	SortRatingHighest   SortBy = "by/rating"
@@ -42,6 +42,7 @@ const (
 	SortEntryRatingHighest SortBy = "by/entry-rating"
 	SortEntryRatingLowest  SortBy = "by/entry-rating-lowest"
 	SortByActivity         SortBy = "by/activity"
+	SortDiaryCount         SortBy = "by/diary-count"
 
 	// List Specific
 	SortListOwnerRatingHighest SortBy = "by/owner-rating"
@@ -56,6 +57,7 @@ func (s SortBy) String() string {
 	return string(s)
 }
 
+// Options are build the filter/sort options in the url
 type Options struct {
 	Sort        SortBy
 	WatchedYear string
@@ -67,39 +69,51 @@ type Options struct {
 	Rating      Rating
 }
 
+// Option is a functional option used to add the filter/sort options in the url
 type Option func(*Options)
 
+// WithSortBy will sort the diary and list by the specified SortBy
 func WithSortBy(sort SortBy) Option {
 	return func(c *Options) { c.Sort = sort }
 }
 
+// WithWatchedYear will filter the diary by the year watched
 func WithWatchedYear(year string) Option {
 	return func(c *Options) { c.WatchedYear = year }
 }
 
+// WithGenre will filter the diary and list by a genre
 func WithGenre(genre string) Option {
 	return func(c *Options) { c.Genre = strings.ToLower(genre) }
 }
 
+// WithDecade will filter the diary and list by decade of movie release
 func WithDecade(decade string) Option {
 	return func(c *Options) { c.Decade = decade }
 }
 
+// WithYear will filter the diary and list by year of movie release
 func WithYear(year string) Option {
 	return func(c *Options) { c.Year = year }
 }
+
+// WithDirector will filter the diary and list by director slug
 func WithDirector(director string) Option {
 	return func(c *Options) { c.Director = director }
 }
+
+// WithActor will filter the diary and list by actor slug
 func WithActor(actor string) Option {
 	return func(c *Options) { c.Actor = actor }
 }
 
+// WithRating will filter the diary by rating
 func WithRating(rating Rating) Option {
 	return func(c *Options) { c.Rating = rating }
 }
 
-func (f Options) Build() string {
+// build will build the url path with the filters and sortby options
+func (f Options) build() string {
 	segments := make([]string, 0)
 	if f.WatchedYear != "" {
 		segments = append(segments, "for", f.WatchedYear)
